@@ -103,6 +103,11 @@ const refs = {
 
 let activeView = "order";
 
+function normalizeCategory(value) {
+  const text = String(value || "").trim();
+  return text || "未分类";
+}
+
 function nowIso() {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
@@ -237,7 +242,7 @@ function parseMenuImportText(rawText) {
 function groupedMenu(menu) {
   const groups = {};
   for (const item of menu) {
-    const category = String(item.category || "").trim() || "未分类";
+    const category = normalizeCategory(item.category);
     if (!groups[category]) groups[category] = [];
     groups[category].push({ ...item, category });
   }
@@ -370,13 +375,16 @@ function renderMenu() {
 function renderMenuAdmin() {
   const categorySet = new Set();
   (state.categoryAdmin || []).forEach((item) => {
-    const category = String(item.category || "").trim();
+    const category = normalizeCategory(item.category);
     if (category) categorySet.add(category);
   });
   state.menuAdmin.forEach((item) => {
-    const category = String(item.category || "").trim();
+    const category = normalizeCategory(item.category);
     if (category) categorySet.add(category);
   });
+  if (!categorySet.size) {
+    categorySet.add("未分类");
+  }
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
     .map((category) => `<option value="${category}"></option>`)
@@ -389,13 +397,14 @@ function renderMenuAdmin() {
 
   refs.menuAdminBody.innerHTML = state.menuAdmin
     .map((item) => {
+      const category = normalizeCategory(item.category);
       const disabled = item.is_active ? "" : "disabled";
       const statusText = item.is_active ? "上架" : "已删除";
       const statusClass = item.is_active ? "status-up" : "status-down";
       return `
         <tr>
           <td>${item.name}</td>
-          <td>${item.category}</td>
+          <td>${category}</td>
           <td>
             <div class="price-edit-wrap">
               <input class="price-edit-input" type="number" min="1" value="${item.price}" data-price-input-id="${item.id}" ${disabled} />
@@ -467,7 +476,7 @@ function renderMenuAdmin() {
 }
 
 function renderCategoryAdmin() {
-  const categories = (state.categoryAdmin || []).filter((item) => String(item.category || "").trim() !== "");
+  const categories = state.categoryAdmin || [];
   if (!categories.length) {
     refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
     refs.categoryRenameOld.innerHTML = "";
@@ -485,12 +494,28 @@ function renderCategoryAdmin() {
     .map((item) => `<option value="${item.category}">${item.category}</option>`)
     .join("");
 
+  const oldRenameValue = refs.categoryRenameOld.value;
+  const oldSourceValue = refs.categoryMergeSource.value;
+
   refs.categoryRenameOld.innerHTML = options;
+  if (categories.some((item) => item.category === oldRenameValue)) {
+    refs.categoryRenameOld.value = oldRenameValue;
+  } else if (categories.length) {
+    refs.categoryRenameOld.value = categories[0].category;
+  }
   refs.categoryMergeSource.innerHTML = options;
+  if (categories.some((item) => item.category === oldSourceValue)) {
+    refs.categoryMergeSource.value = oldSourceValue;
+  } else if (categories.length) {
+    refs.categoryMergeSource.value = categories[0].category;
+  }
   refs.categoryDeleteName.innerHTML = categories
     .filter((item) => Number(item.total_count) === 0)
     .map((item) => `<option value="${item.category}">${item.category}</option>`)
     .join("");
+  if (!refs.categoryDeleteName.value) {
+    refs.categoryDeleteName.selectedIndex = 0;
+  }
   refs.categoryMergeTargetOptions.innerHTML = categories
     .map((item) => `<option value="${item.category}"></option>`)
     .join("");
@@ -610,13 +635,11 @@ function renderSummary() {
 function reloadAll() {
   const categoryMap = new Map();
   (state.categoryAdmin || []).forEach((item) => {
-    const name = String(item.category || "").trim();
-    if (!name) return;
+    const name = normalizeCategory(item.category);
     categoryMap.set(name, { category: name, active_count: 0, total_count: 0 });
   });
   state.menuAdmin.forEach((item) => {
-    const name = String(item.category || "").trim();
-    if (!name) return;
+    const name = normalizeCategory(item.category);
     const prev = categoryMap.get(name) || { category: name, active_count: 0, total_count: 0 };
     prev.total_count += 1;
     if (item.is_active) prev.active_count += 1;
@@ -718,15 +741,11 @@ function submitMenuAdminForm(event) {
   clearAdminMessage();
 
   const name = refs.newDishName.value.trim();
-  const category = refs.newDishCategory.value.trim();
+  const category = normalizeCategory(refs.newDishCategory.value);
   const price = Number(refs.newDishPrice.value || 0);
 
   if (!name) {
     showAdminMessage("菜名不能为空", true);
-    return;
-  }
-  if (!category) {
-    showAdminMessage("分类不能为空", true);
     return;
   }
   if (!price || price <= 0) {
@@ -759,6 +778,7 @@ function submitMenuAdminForm(event) {
   }
 
   refs.newDishName.value = "";
+  refs.newDishCategory.value = category;
   refs.newDishPrice.value = "";
 
   saveState();
