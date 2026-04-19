@@ -94,6 +94,30 @@ body {
   padding: 18px;
 }
 
+.view-switcher {
+  padding: 12px;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.view-tab.is-active {
+  background: linear-gradient(120deg, var(--accent), #df7b43);
+  color: #fff;
+  border-color: transparent;
+}
+
+.screen-panel {
+  display: none;
+}
+
+.screen-panel.is-active {
+  display: block;
+}
+
 .panel-title-row {
   display: flex;
   justify-content: space-between;
