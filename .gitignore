@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+
+group_orders.db
+*.log
+
+tools/
+wechat-share-qr.txt
+
+.idea/
+.vscode/
