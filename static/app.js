@@ -6,6 +6,7 @@ const state = {
 };
 
 const refs = {
+  viewTabsWrap: document.getElementById("view-tabs"),
   storeNameDisplay: document.getElementById("store-name-display"),
   storeNameForm: document.getElementById("store-name-form"),
   storeNameInput: document.getElementById("store-name-input"),
@@ -38,6 +39,8 @@ const refs = {
   memberRankBody: document.getElementById("member-rank-body"),
 };
 
+let activeView = "order";
+
 function yuan(amount) {
   return `¥${Number(amount || 0).toFixed(0)}`;
 }
@@ -58,6 +61,16 @@ function showAdminMessage(text, isError = false) {
 
 function clearAdminMessage() {
   refs.menuAdminMessage.textContent = "";
+}
+
+function switchView(view) {
+  activeView = view;
+  document.querySelectorAll(".screen-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.screen === view);
+  });
+  refs.viewTabsWrap.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.viewTarget === view);
+  });
 }
 
 function downloadFile(filename, content, mimeType) {
@@ -283,6 +296,7 @@ function renderOrders() {
       const id = Number(btn.dataset.editId);
       const order = state.orders.find((item) => item.id === id);
       if (order) fillForm(order);
+      switchView("order");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
@@ -467,6 +481,9 @@ async function submitForm(event) {
 }
 
 function bindEvents() {
+  refs.viewTabsWrap.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.addEventListener("click", () => switchView(tab.dataset.viewTarget));
+  });
   refs.storeNameForm.addEventListener("submit", submitStoreNameForm);
   refs.orderForm.addEventListener("submit", submitForm);
   refs.clearBtn.addEventListener("click", resetForm);
@@ -479,6 +496,7 @@ function bindEvents() {
 
 async function boot() {
   bindEvents();
+  switchView(activeView);
   try {
     await reloadAll();
   } catch (error) {
