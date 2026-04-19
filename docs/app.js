@@ -285,6 +285,7 @@ function saveState() {
     JSON.stringify({
       storeName: state.storeName,
       menuAdmin: state.menuAdmin,
+      categoryAdmin: state.categoryAdmin,
       orders: state.orders,
       nextMenuId: state.nextMenuId,
       nextOrderId: state.nextOrderId
@@ -296,6 +297,7 @@ function normalizeLoadedState(data) {
   if (!data || !Array.isArray(data.menuAdmin) || !Array.isArray(data.orders)) return false;
   state.storeName = String(data.storeName || DEFAULT_STORE_NAME);
   state.menuAdmin = data.menuAdmin;
+  state.categoryAdmin = Array.isArray(data.categoryAdmin) ? data.categoryAdmin : [];
   state.orders = data.orders;
   state.nextMenuId = Number(data.nextMenuId || 1);
   state.nextOrderId = Number(data.nextOrderId || 1);
@@ -327,6 +329,7 @@ function initState() {
     state.nextMenuId = state.menuAdmin.length + 1;
     state.nextOrderId = 1;
     state.storeName = DEFAULT_STORE_NAME;
+    state.categoryAdmin = [];
     saveState();
   }
 
@@ -583,11 +586,18 @@ function renderSummary() {
 
 function reloadAll() {
   const categoryMap = new Map();
+  (state.categoryAdmin || []).forEach((item) => {
+    const name = String(item.category || "").trim();
+    if (!name) return;
+    categoryMap.set(name, { category: name, active_count: 0, total_count: 0 });
+  });
   state.menuAdmin.forEach((item) => {
-    const prev = categoryMap.get(item.category) || { category: item.category, active_count: 0, total_count: 0 };
+    const name = String(item.category || "").trim();
+    if (!name) return;
+    const prev = categoryMap.get(name) || { category: name, active_count: 0, total_count: 0 };
     prev.total_count += 1;
     if (item.is_active) prev.active_count += 1;
-    categoryMap.set(item.category, prev);
+    categoryMap.set(name, prev);
   });
   state.categoryAdmin = [...categoryMap.values()].sort((a, b) => a.category.localeCompare(b.category, "zh-CN"));
   renderStoreName(state.storeName);
