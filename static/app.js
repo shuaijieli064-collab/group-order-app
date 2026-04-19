@@ -23,6 +23,8 @@ const refs = {
   menuImportForm: document.getElementById("menu-import-form"),
   menuImportContent: document.getElementById("menu-import-content"),
   menuImportReplace: document.getElementById("menu-import-replace"),
+  menuTemplateCsvBtn: document.getElementById("menu-template-csv-btn"),
+  menuTemplateTxtBtn: document.getElementById("menu-template-txt-btn"),
   newDishName: document.getElementById("new-dish-name"),
   newDishCategory: document.getElementById("new-dish-category"),
   newDishPrice: document.getElementById("new-dish-price"),
@@ -56,6 +58,39 @@ function showAdminMessage(text, isError = false) {
 
 function clearAdminMessage() {
   refs.menuAdminMessage.textContent = "";
+}
+
+function downloadFile(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function downloadMenuTemplateCsv() {
+  const rows = [
+    ["分类", "菜名", "价格"],
+    ["招牌必点", "爆炒肥肠", "46"],
+    ["家常小炒", "油渣炒洪菜", "19"],
+    ["凉菜配菜", "刀拍黄瓜", "15"],
+  ];
+  const text = rows.map((row) => row.map((value) => `"${value}"`).join(",")).join("\n");
+  downloadFile("menu-import-template.csv", `\ufeff${text}`, "text/csv;charset=utf-8;");
+}
+
+function downloadMenuTemplateTxt() {
+  const text = [
+    "分类,菜名,价格",
+    "招牌必点,爆炒肥肠,46",
+    "家常小炒,油渣炒洪菜,19",
+    "凉菜配菜,刀拍黄瓜,15",
+  ].join("\n");
+  downloadFile("menu-import-template.txt", text, "text/plain;charset=utf-8;");
 }
 
 function renderStoreName(storeName) {
@@ -438,6 +473,8 @@ function bindEvents() {
   refs.refreshBtn.addEventListener("click", reloadAll);
   refs.menuAdminForm.addEventListener("submit", submitMenuAdminForm);
   refs.menuImportForm.addEventListener("submit", submitMenuImportForm);
+  refs.menuTemplateCsvBtn.addEventListener("click", downloadMenuTemplateCsv);
+  refs.menuTemplateTxtBtn.addEventListener("click", downloadMenuTemplateTxt);
 }
 
 async function boot() {
