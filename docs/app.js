@@ -237,8 +237,9 @@ function parseMenuImportText(rawText) {
 function groupedMenu(menu) {
   const groups = {};
   for (const item of menu) {
-    if (!groups[item.category]) groups[item.category] = [];
-    groups[item.category].push(item);
+    const category = String(item.category || "").trim() || "未分类";
+    if (!groups[category]) groups[category] = [];
+    groups[category].push({ ...item, category });
   }
   return groups;
 }
@@ -369,10 +370,12 @@ function renderMenu() {
 function renderMenuAdmin() {
   const categorySet = new Set();
   (state.categoryAdmin || []).forEach((item) => {
-    if (item.category) categorySet.add(item.category.trim());
+    const category = String(item.category || "").trim();
+    if (category) categorySet.add(category);
   });
   state.menuAdmin.forEach((item) => {
-    if (item.category) categorySet.add(item.category.trim());
+    const category = String(item.category || "").trim();
+    if (category) categorySet.add(category);
   });
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
@@ -380,7 +383,7 @@ function renderMenuAdmin() {
     .join("");
 
   if (!state.menuAdmin.length) {
-    refs.menuAdminBody.innerHTML = `<tr><td colspan="5" class="empty">暂无菜品</td></tr>`;
+    refs.menuAdminBody.innerHTML = `<tr><td colspan="6" class="empty">暂无菜品</td></tr>`;
     return;
   }
 
@@ -402,6 +405,9 @@ function renderMenuAdmin() {
           <td><span class="status-tag ${statusClass}">${statusText}</span></td>
           <td>
             <button class="btn btn-danger btn-small" data-delete-dish-id="${item.id}" type="button" ${disabled}>删菜</button>
+          </td>
+          <td>
+            <button class="btn btn-danger btn-small" data-delete-dish-hard-id="${item.id}" type="button">彻底删</button>
           </td>
         </tr>
       `;
@@ -441,10 +447,27 @@ function renderMenuAdmin() {
       reloadAll();
     });
   });
+
+  refs.menuAdminBody.querySelectorAll("button[data-delete-dish-hard-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = Number(button.dataset.deleteDishHardId);
+      const ok = window.confirm("确认彻底删除该菜品？已有订单记录的菜品不能彻底删除。");
+      if (!ok) return;
+      const used = state.orders.some((order) => order.items.some((item) => item.menu_item_id === id));
+      if (used) {
+        showAdminMessage("该菜品已有订单记录，不能彻底删除", true);
+        return;
+      }
+      state.menuAdmin = state.menuAdmin.filter((item) => item.id !== id);
+      saveState();
+      showAdminMessage("菜品已彻底删除");
+      reloadAll();
+    });
+  });
 }
 
 function renderCategoryAdmin() {
-  const categories = state.categoryAdmin || [];
+  const categories = (state.categoryAdmin || []).filter((item) => String(item.category || "").trim() !== "");
   if (!categories.length) {
     refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
     refs.categoryRenameOld.innerHTML = "";
@@ -736,7 +759,6 @@ function submitMenuAdminForm(event) {
   }
 
   refs.newDishName.value = "";
-  refs.newDishCategory.value = "";
   refs.newDishPrice.value = "";
 
   saveState();
@@ -762,6 +784,7 @@ function submitCategoryCreateForm(event) {
   saveState();
   showAdminMessage("分类已创建");
   reloadAll();
+  refs.newDishCategory.value = name;
 }
 
 function submitCategoryRenameForm(event) {
