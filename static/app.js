@@ -55,6 +55,11 @@ const refs = {
 
 let activeView = "order";
 
+function normalizeCategory(value) {
+  const text = String(value || "").trim();
+  return text || "未分类";
+}
+
 function yuan(amount) {
   return `¥${Number(amount || 0).toFixed(0)}`;
 }
@@ -130,7 +135,7 @@ function renderStoreName(storeName) {
 function groupedMenu(menu) {
   const groups = {};
   for (const item of menu) {
-    const category = String(item.category || "").trim() || "未分类";
+    const category = normalizeCategory(item.category);
     if (!groups[category]) groups[category] = [];
     groups[category].push({ ...item, category });
   }
@@ -168,13 +173,16 @@ function renderMenu() {
 function renderMenuAdmin() {
   const categorySet = new Set();
   (state.categoryAdmin || []).forEach((item) => {
-    const category = String(item.category || "").trim();
+    const category = normalizeCategory(item.category);
     if (category) categorySet.add(category);
   });
   state.menuAdmin.forEach((item) => {
-    const category = String(item.category || "").trim();
+    const category = normalizeCategory(item.category);
     if (category) categorySet.add(category);
   });
+  if (!categorySet.size) {
+    categorySet.add("未分类");
+  }
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
     .map((category) => `<option value="${category}"></option>`)
@@ -187,13 +195,14 @@ function renderMenuAdmin() {
 
   refs.menuAdminBody.innerHTML = state.menuAdmin
     .map((item) => {
+      const category = normalizeCategory(item.category);
       const disabled = item.is_active ? "" : "disabled";
       const statusText = item.is_active ? "上架" : "已删除";
       const statusClass = item.is_active ? "status-up" : "status-down";
       return `
         <tr>
           <td>${item.name}</td>
-          <td>${item.category}</td>
+          <td>${category}</td>
           <td>
             <div class="price-edit-wrap">
               <input class="price-edit-input" type="number" min="1" value="${item.price}" data-price-input-id="${item.id}" ${disabled} />
@@ -266,7 +275,7 @@ function renderMenuAdmin() {
 }
 
 function renderCategoryAdmin() {
-  const categories = (state.categoryAdmin || []).filter((item) => String(item.category || "").trim() !== "");
+  const categories = state.categoryAdmin || [];
   if (!categories.length) {
     refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
     refs.categoryRenameOld.innerHTML = "";
@@ -284,12 +293,28 @@ function renderCategoryAdmin() {
     .map((item) => `<option value="${item.category}">${item.category}</option>`)
     .join("");
 
+  const oldRenameValue = refs.categoryRenameOld.value;
+  const oldSourceValue = refs.categoryMergeSource.value;
+
   refs.categoryRenameOld.innerHTML = options;
+  if (categories.some((item) => item.category === oldRenameValue)) {
+    refs.categoryRenameOld.value = oldRenameValue;
+  } else if (categories.length) {
+    refs.categoryRenameOld.value = categories[0].category;
+  }
   refs.categoryMergeSource.innerHTML = options;
+  if (categories.some((item) => item.category === oldSourceValue)) {
+    refs.categoryMergeSource.value = oldSourceValue;
+  } else if (categories.length) {
+    refs.categoryMergeSource.value = categories[0].category;
+  }
   refs.categoryDeleteName.innerHTML = categories
     .filter((item) => Number(item.total_count) === 0)
     .map((item) => `<option value="${item.category}">${item.category}</option>`)
     .join("");
+  if (!refs.categoryDeleteName.value) {
+    refs.categoryDeleteName.selectedIndex = 0;
+  }
   refs.categoryMergeTargetOptions.innerHTML = categories
     .map((item) => `<option value="${item.category}"></option>`)
     .join("");
@@ -568,7 +593,7 @@ async function submitMenuAdminForm(event) {
 
   const payload = {
     name: refs.newDishName.value.trim(),
-    category: refs.newDishCategory.value.trim(),
+    category: normalizeCategory(refs.newDishCategory.value),
     price: Number(refs.newDishPrice.value || 0),
   };
 
@@ -578,6 +603,7 @@ async function submitMenuAdminForm(event) {
       body: JSON.stringify(payload),
     });
     refs.newDishName.value = "";
+    refs.newDishCategory.value = payload.category;
     refs.newDishPrice.value = "";
     showAdminMessage("菜品已新增");
     await reloadAll();
