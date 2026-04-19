@@ -47,6 +47,7 @@ const state = {
   storeName: DEFAULT_STORE_NAME,
   menu: [],
   menuAdmin: [],
+  categoryAdmin: [],
   orders: [],
   nextMenuId: 1,
   nextOrderId: 1
@@ -69,6 +70,18 @@ const refs = {
   refreshBtn: document.getElementById("refresh-btn"),
   exportCsvBtn: document.getElementById("export-csv-btn"),
   menuAdminForm: document.getElementById("menu-admin-form"),
+  categoryCreateForm: document.getElementById("category-create-form"),
+  categoryRenameForm: document.getElementById("category-rename-form"),
+  categoryMergeForm: document.getElementById("category-merge-form"),
+  categoryDeleteForm: document.getElementById("category-delete-form"),
+  categoryCreateName: document.getElementById("category-create-name"),
+  categoryRenameOld: document.getElementById("category-rename-old"),
+  categoryRenameNew: document.getElementById("category-rename-new"),
+  categoryMergeSource: document.getElementById("category-merge-source"),
+  categoryMergeTarget: document.getElementById("category-merge-target"),
+  categoryMergeTargetOptions: document.getElementById("category-merge-target-options"),
+  categoryDeleteName: document.getElementById("category-delete-name"),
+  categoryAdminBody: document.getElementById("category-admin-body"),
   menuImportForm: document.getElementById("menu-import-form"),
   menuImportContent: document.getElementById("menu-import-content"),
   menuImportReplace: document.getElementById("menu-import-replace"),
@@ -352,11 +365,12 @@ function renderMenu() {
 
 function renderMenuAdmin() {
   const categorySet = new Set();
-  state.menuAdmin
-    .filter((item) => item.is_active)
-    .forEach((item) => {
-      if (item.category) categorySet.add(item.category.trim());
-    });
+  (state.categoryAdmin || []).forEach((item) => {
+    if (item.category) categorySet.add(item.category.trim());
+  });
+  state.menuAdmin.forEach((item) => {
+    if (item.category) categorySet.add(item.category.trim());
+  });
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
     .map((category) => `<option value="${category}"></option>`)
@@ -424,6 +438,36 @@ function renderMenuAdmin() {
       reloadAll();
     });
   });
+}
+
+function renderCategoryAdmin() {
+  const categories = state.categoryAdmin || [];
+  if (!categories.length) {
+    refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
+    refs.categoryRenameOld.innerHTML = "";
+    refs.categoryMergeSource.innerHTML = "";
+    refs.categoryDeleteName.innerHTML = "";
+    refs.categoryMergeTargetOptions.innerHTML = "";
+    return;
+  }
+
+  refs.categoryAdminBody.innerHTML = categories
+    .map((item) => `<tr><td>${item.category}</td><td>${item.active_count}</td><td>${item.total_count}</td></tr>`)
+    .join("");
+
+  const options = categories
+    .map((item) => `<option value="${item.category}">${item.category}</option>`)
+    .join("");
+
+  refs.categoryRenameOld.innerHTML = options;
+  refs.categoryMergeSource.innerHTML = options;
+  refs.categoryDeleteName.innerHTML = categories
+    .filter((item) => Number(item.total_count) === 0)
+    .map((item) => `<option value="${item.category}">${item.category}</option>`)
+    .join("");
+  refs.categoryMergeTargetOptions.innerHTML = categories
+    .map((item) => `<option value="${item.category}"></option>`)
+    .join("");
 }
 
 function collectItemsFromForm() {
@@ -538,10 +582,19 @@ function renderSummary() {
 }
 
 function reloadAll() {
+  const categoryMap = new Map();
+  state.menuAdmin.forEach((item) => {
+    const prev = categoryMap.get(item.category) || { category: item.category, active_count: 0, total_count: 0 };
+    prev.total_count += 1;
+    if (item.is_active) prev.active_count += 1;
+    categoryMap.set(item.category, prev);
+  });
+  state.categoryAdmin = [...categoryMap.values()].sort((a, b) => a.category.localeCompare(b.category, "zh-CN"));
   renderStoreName(state.storeName);
   state.menu = state.menuAdmin.filter((item) => item.is_active === 1);
   renderMenu();
   renderMenuAdmin();
+  renderCategoryAdmin();
   renderOrders();
   renderSummary();
 }
@@ -681,6 +734,105 @@ function submitMenuAdminForm(event) {
   reloadAll();
 }
 
+function submitCategoryCreateForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const name = refs.categoryCreateName.value.trim();
+  if (!name) {
+    showAdminMessage("分类名称不能为空", true);
+    return;
+  }
+  const exists = state.categoryAdmin.some((item) => item.category === name);
+  if (exists) {
+    showAdminMessage("分类已存在", true);
+    return;
+  }
+  state.categoryAdmin.push({ category: name, active_count: 0, total_count: 0 });
+  refs.categoryCreateName.value = "";
+  saveState();
+  showAdminMessage("分类已创建");
+  reloadAll();
+}
+
+function submitCategoryRenameForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const oldName = refs.categoryRenameOld.value.trim();
+  const newName = refs.categoryRenameNew.value.trim();
+  if (!oldName || !newName) {
+    showAdminMessage("请填写完整分类名称", true);
+    return;
+  }
+  if (oldName === newName) {
+    showAdminMessage("新旧分类不能相同", true);
+    return;
+  }
+  if (state.categoryAdmin.some((item) => item.category === newName)) {
+    showAdminMessage("目标分类已存在，请使用合并", true);
+    return;
+  }
+
+  const stamp = nowIso();
+  state.menuAdmin.forEach((item) => {
+    if (item.category === oldName) {
+      item.category = newName;
+      item.updated_at = stamp;
+    }
+  });
+  refs.categoryRenameNew.value = "";
+  saveState();
+  showAdminMessage("分类已重命名");
+  reloadAll();
+}
+
+function submitCategoryMergeForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const sourceName = refs.categoryMergeSource.value.trim();
+  const targetName = refs.categoryMergeTarget.value.trim();
+  if (!sourceName || !targetName) {
+    showAdminMessage("请选择源分类并填写目标分类", true);
+    return;
+  }
+  if (sourceName === targetName) {
+    showAdminMessage("源分类和目标分类不能相同", true);
+    return;
+  }
+
+  const stamp = nowIso();
+  let moved = 0;
+  state.menuAdmin.forEach((item) => {
+    if (item.category === sourceName) {
+      item.category = targetName;
+      item.updated_at = stamp;
+      moved += 1;
+    }
+  });
+  refs.categoryMergeTarget.value = "";
+  saveState();
+  showAdminMessage(`分类已合并，迁移 ${moved} 道菜`);
+  reloadAll();
+}
+
+function submitCategoryDeleteForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const name = refs.categoryDeleteName.value.trim();
+  if (!name) {
+    showAdminMessage("当前没有可删空分类", true);
+    return;
+  }
+  const used = state.menuAdmin.some((item) => item.category === name);
+  if (used) {
+    showAdminMessage("分类下还有菜品，不能删除", true);
+    return;
+  }
+  state.categoryAdmin = state.categoryAdmin.filter((item) => item.category !== name);
+  saveState();
+  showAdminMessage("空分类已删除");
+  reloadAll();
+}
+
 function submitStoreNameForm(event) {
   event.preventDefault();
   clearAdminMessage();
@@ -810,6 +962,10 @@ function bindEvents() {
   refs.clearBtn.addEventListener("click", resetForm);
   refs.refreshBtn.addEventListener("click", reloadAll);
   refs.menuAdminForm.addEventListener("submit", submitMenuAdminForm);
+  refs.categoryCreateForm.addEventListener("submit", submitCategoryCreateForm);
+  refs.categoryRenameForm.addEventListener("submit", submitCategoryRenameForm);
+  refs.categoryMergeForm.addEventListener("submit", submitCategoryMergeForm);
+  refs.categoryDeleteForm.addEventListener("submit", submitCategoryDeleteForm);
   refs.menuImportForm.addEventListener("submit", submitMenuImportForm);
   refs.menuTemplateCsvBtn.addEventListener("click", downloadMenuTemplateCsv);
   refs.menuTemplateTxtBtn.addEventListener("click", downloadMenuTemplateTxt);
