@@ -64,6 +64,29 @@ setx NGROK_AUTHTOKEN 你的token
 - 关闭脚本或断网后，分享链接会失效。
 - 公网链接会把你的下单页暴露到外网，建议只在点餐期间临时使用。
 
+## 云端部署（可实时共享，推荐）
+
+推荐用 Render 免费方案，部署后可以得到一个长期公网地址，大家访问同一个数据库。
+
+### 1) 准备
+
+- 代码仓库：`https://github.com/shuaijieli064-collab/group-order-app`
+- 项目已包含 `render.yaml`，并配置了持久化磁盘路径。
+
+### 2) 部署步骤
+
+1. 打开 Render 并登录：`https://render.com`
+2. 选择 **New +** -> **Blueprint**
+3. 连接 GitHub 仓库 `group-order-app`
+4. 确认创建 `group-order-app` 服务
+5. 等待构建完成后，访问 Render 给出的 `https://xxx.onrender.com`
+
+### 3) 关键说明
+
+- 持久化数据库路径：`/var/data/group_orders.db`
+- 已在 `render.yaml` 里配置，不需要你手动改代码。
+- 免费实例可能会休眠，首次打开会慢几秒。
+
 ## 数据存储
 
 - SQLite 文件：`group_orders.db`

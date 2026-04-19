@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: group-order-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: GROUP_ORDER_DB_PATH
+        value: /var/data/group_orders.db
+
+disks:
+  - name: group-order-data
+    mountPath: /var/data
+    sizeGB: 1

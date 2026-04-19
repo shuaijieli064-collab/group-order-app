@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
@@ -11,7 +12,7 @@ from flask import Flask, Response, jsonify, request, send_from_directory
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "group_orders.db"
+DB_PATH = Path(os.getenv("GROUP_ORDER_DB_PATH", str(BASE_DIR / "group_orders.db")))
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
 
@@ -561,7 +562,9 @@ def api_export_csv() -> Response:
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.getenv("PORT", "5000"))
+    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
 
 
 init_db()
