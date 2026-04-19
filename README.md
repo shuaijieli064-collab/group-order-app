@@ -66,7 +66,7 @@ setx NGROK_AUTHTOKEN 你的token
 
 ## 云端部署（可实时共享，推荐）
 
-推荐用 Render 免费方案，部署后可以得到一个长期公网地址，大家访问同一个数据库。
+推荐用 Render（需可用付费计划），部署后可以得到长期公网地址，大家访问同一个数据库。
 
 ### 1) 准备
 
@@ -85,7 +85,24 @@ setx NGROK_AUTHTOKEN 你的token
 
 - 持久化数据库路径：`/var/data/group_orders.db`
 - 已在 `render.yaml` 里配置，不需要你手动改代码。
-- 免费实例可能会休眠，首次打开会慢几秒。
+- 若蓝图创建失败，通常是账号没有可用付费计划；你可以在 Render 里手动创建 Web Service（见下方）。
+
+### 蓝图失败时的手动创建
+
+1. Render 控制台点 **New +** -> **Web Service**
+2. 选择仓库 `group-order-app`
+3. 填写：
+   - Runtime: `Python 3`
+   - Build Command: `pip install -r requirements.txt`
+   - Start Command: `python app.py`
+   - Instance Type: `Starter` 或更高
+4. 添加环境变量：
+   - `GROUP_ORDER_DB_PATH=/var/data/group_orders.db`
+   - `PYTHON_VERSION=3.11.9`
+5. 在服务里添加磁盘：
+   - Name: `group-order-data`
+   - Mount Path: `/var/data`
+   - Size: `1GB`
 
 ## 数据存储
 
