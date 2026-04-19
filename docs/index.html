@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>群下单助手（GitHub Pages）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="bg-blob bg-blob-a"></div>
+  <div class="bg-blob bg-blob-b"></div>
+
+  <main class="page">
+    <header class="hero">
+      <p class="kicker">群点餐系统 · GitHub Pages 版</p>
+      <h1>双椒鲜土锅馆 · 团队下单台</h1>
+      <p>纯前端版本，数据保存在当前浏览器本地，可直接分享链接给朋友使用。</p>
+    </header>
+
+    <section class="panel order-panel">
+      <div class="panel-title-row">
+        <h2>提交你的订单</h2>
+        <button id="clear-form-btn" class="btn btn-subtle" type="button">清空表单</button>
+      </div>
+
+      <form id="order-form" class="order-form">
+        <input type="hidden" id="order-id" />
+
+        <div class="grid-3">
+          <label>
+            成员姓名
+            <input id="member-name" type="text" placeholder="例如：小李" required />
+          </label>
+          <label>
+            联系方式
+            <input id="contact" type="text" placeholder="手机号/微信" />
+          </label>
+          <label>
+            备注
+            <input id="remark" type="text" placeholder="少辣、不要香菜..." />
+          </label>
+        </div>
+
+        <div id="menu-groups" class="menu-groups"></div>
+
+        <div class="form-actions">
+          <button id="submit-btn" class="btn btn-main" type="submit">提交订单</button>
+          <span id="form-message" class="msg"></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel overview-panel">
+      <div class="panel-title-row">
+        <h2>实时汇总</h2>
+        <div class="inline-actions">
+          <button id="refresh-btn" class="btn btn-subtle" type="button">刷新数据</button>
+          <button id="export-csv-btn" class="btn btn-main" type="button">导出 CSV</button>
+        </div>
+      </div>
+
+      <div class="overview-cards" id="overview-cards">
+        <article>
+          <h3>订单数</h3>
+          <p id="overview-order-count">0</p>
+        </article>
+        <article>
+          <h3>总份数</h3>
+          <p id="overview-item-count">0</p>
+        </article>
+        <article>
+          <h3>总金额</h3>
+          <p id="overview-amount">¥0</p>
+        </article>
+      </div>
+
+      <div class="tables">
+        <div>
+          <h3>菜品排行</h3>
+          <table>
+            <thead>
+              <tr><th>菜品</th><th>分类</th><th>份数</th><th>金额</th></tr>
+            </thead>
+            <tbody id="dish-rank-body"></tbody>
+          </table>
+        </div>
+        <div>
+          <h3>成员排行</h3>
+          <table>
+            <thead>
+              <tr><th>成员</th><th>菜品数</th><th>份数</th><th>金额</th></tr>
+            </thead>
+            <tbody id="member-rank-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel menu-admin-panel">
+      <div class="panel-title-row">
+        <h2>菜品管理</h2>
+      </div>
+
+      <form id="menu-admin-form" class="menu-admin-form">
+        <div class="menu-admin-grid">
+          <label>
+            菜名
+            <input id="new-dish-name" type="text" placeholder="例如：香辣鸡翅" required />
+          </label>
+          <label>
+            分类
+            <input id="new-dish-category" type="text" placeholder="例如：家常小炒" required />
+          </label>
+          <label>
+            单价
+            <input id="new-dish-price" type="number" min="1" placeholder="例如：26" required />
+          </label>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-main" type="submit">新增菜品</button>
+          <span id="menu-admin-message" class="msg"></span>
+        </div>
+      </form>
+
+      <div class="menu-admin-table-wrap">
+        <table class="menu-admin-table">
+          <thead>
+            <tr><th>菜名</th><th>分类</th><th>价格</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody id="menu-admin-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel order-list-panel">
+      <h2>已提交订单</h2>
+      <div id="order-list" class="order-list"></div>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
