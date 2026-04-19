@@ -1,6 +1,7 @@
 const state = {
   menu: [],
   menuAdmin: [],
+  categoryAdmin: [],
   menuById: new Map(),
   orders: [],
 };
@@ -21,6 +22,18 @@ const refs = {
   clearBtn: document.getElementById("clear-form-btn"),
   refreshBtn: document.getElementById("refresh-btn"),
   menuAdminForm: document.getElementById("menu-admin-form"),
+  categoryCreateForm: document.getElementById("category-create-form"),
+  categoryRenameForm: document.getElementById("category-rename-form"),
+  categoryMergeForm: document.getElementById("category-merge-form"),
+  categoryDeleteForm: document.getElementById("category-delete-form"),
+  categoryCreateName: document.getElementById("category-create-name"),
+  categoryRenameOld: document.getElementById("category-rename-old"),
+  categoryRenameNew: document.getElementById("category-rename-new"),
+  categoryMergeSource: document.getElementById("category-merge-source"),
+  categoryMergeTarget: document.getElementById("category-merge-target"),
+  categoryMergeTargetOptions: document.getElementById("category-merge-target-options"),
+  categoryDeleteName: document.getElementById("category-delete-name"),
+  categoryAdminBody: document.getElementById("category-admin-body"),
   menuImportForm: document.getElementById("menu-import-form"),
   menuImportContent: document.getElementById("menu-import-content"),
   menuImportReplace: document.getElementById("menu-import-replace"),
@@ -153,11 +166,12 @@ function renderMenu() {
 
 function renderMenuAdmin() {
   const categorySet = new Set();
-  state.menuAdmin
-    .filter((item) => item.is_active)
-    .forEach((item) => {
-      if (item.category) categorySet.add(item.category.trim());
-    });
+  (state.categoryAdmin || []).forEach((item) => {
+    if (item.category) categorySet.add(item.category.trim());
+  });
+  state.menuAdmin.forEach((item) => {
+    if (item.category) categorySet.add(item.category.trim());
+  });
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
     .map((category) => `<option value="${category}"></option>`)
@@ -228,6 +242,36 @@ function renderMenuAdmin() {
       }
     });
   });
+}
+
+function renderCategoryAdmin() {
+  const categories = state.categoryAdmin || [];
+  if (!categories.length) {
+    refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
+    refs.categoryRenameOld.innerHTML = "";
+    refs.categoryMergeSource.innerHTML = "";
+    refs.categoryDeleteName.innerHTML = "";
+    refs.categoryMergeTargetOptions.innerHTML = "";
+    return;
+  }
+
+  refs.categoryAdminBody.innerHTML = categories
+    .map((item) => `<tr><td>${item.category}</td><td>${item.active_count}</td><td>${item.total_count}</td></tr>`)
+    .join("");
+
+  const options = categories
+    .map((item) => `<option value="${item.category}">${item.category}</option>`)
+    .join("");
+
+  refs.categoryRenameOld.innerHTML = options;
+  refs.categoryMergeSource.innerHTML = options;
+  refs.categoryDeleteName.innerHTML = categories
+    .filter((item) => Number(item.total_count) === 0)
+    .map((item) => `<option value="${item.category}">${item.category}</option>`)
+    .join("");
+  refs.categoryMergeTargetOptions.innerHTML = categories
+    .map((item) => `<option value="${item.category}"></option>`)
+    .join("");
 }
 
 function collectItemsFromForm() {
@@ -367,10 +411,11 @@ async function fetchJson(url, options = {}) {
 }
 
 async function reloadAll() {
-  const [settings, menu, menuAdmin, orders, summary] = await Promise.all([
+  const [settings, menu, menuAdmin, categoryAdmin, orders, summary] = await Promise.all([
     fetchJson("/api/settings"),
     fetchJson("/api/menu"),
     fetchJson("/api/menu/admin"),
+    fetchJson("/api/categories/admin"),
     fetchJson("/api/orders"),
     fetchJson("/api/summary"),
   ]);
@@ -378,11 +423,99 @@ async function reloadAll() {
   state.menu = menu;
   state.menuById = new Map(menu.map((item) => [item.id, item]));
   state.menuAdmin = menuAdmin;
+  state.categoryAdmin = categoryAdmin;
   state.orders = orders;
   renderMenu();
   renderMenuAdmin();
+  renderCategoryAdmin();
   renderOrders();
   renderSummary(summary);
+}
+
+async function submitCategoryCreateForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const name = refs.categoryCreateName.value.trim();
+  if (!name) {
+    showAdminMessage("分类名称不能为空", true);
+    return;
+  }
+
+  try {
+    await fetchJson("/api/categories", { method: "POST", body: JSON.stringify({ name }) });
+    refs.categoryCreateName.value = "";
+    showAdminMessage("分类已创建");
+    await reloadAll();
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
+}
+
+async function submitCategoryRenameForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const oldName = refs.categoryRenameOld.value.trim();
+  const newName = refs.categoryRenameNew.value.trim();
+  if (!oldName || !newName) {
+    showAdminMessage("请填写完整分类名称", true);
+    return;
+  }
+
+  try {
+    await fetchJson("/api/categories/rename", {
+      method: "PATCH",
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    });
+    refs.categoryRenameNew.value = "";
+    showAdminMessage("分类已重命名");
+    await reloadAll();
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
+}
+
+async function submitCategoryMergeForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const sourceName = refs.categoryMergeSource.value.trim();
+  const targetName = refs.categoryMergeTarget.value.trim();
+  if (!sourceName || !targetName) {
+    showAdminMessage("请选择源分类并填写目标分类", true);
+    return;
+  }
+
+  try {
+    const result = await fetchJson("/api/categories/merge", {
+      method: "PATCH",
+      body: JSON.stringify({ source_name: sourceName, target_name: targetName }),
+    });
+    refs.categoryMergeTarget.value = "";
+    showAdminMessage(`分类已合并，迁移 ${result.moved} 道菜`);
+    await reloadAll();
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
+}
+
+async function submitCategoryDeleteForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+  const name = refs.categoryDeleteName.value.trim();
+  if (!name) {
+    showAdminMessage("当前没有可删空分类", true);
+    return;
+  }
+
+  try {
+    await fetchJson("/api/categories/delete-empty", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    showAdminMessage("空分类已删除");
+    await reloadAll();
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
 }
 
 async function submitStoreNameForm(event) {
@@ -501,6 +634,10 @@ function bindEvents() {
   refs.clearBtn.addEventListener("click", resetForm);
   refs.refreshBtn.addEventListener("click", reloadAll);
   refs.menuAdminForm.addEventListener("submit", submitMenuAdminForm);
+  refs.categoryCreateForm.addEventListener("submit", submitCategoryCreateForm);
+  refs.categoryRenameForm.addEventListener("submit", submitCategoryRenameForm);
+  refs.categoryMergeForm.addEventListener("submit", submitCategoryMergeForm);
+  refs.categoryDeleteForm.addEventListener("submit", submitCategoryDeleteForm);
   refs.menuImportForm.addEventListener("submit", submitMenuImportForm);
   refs.menuTemplateCsvBtn.addEventListener("click", downloadMenuTemplateCsv);
   refs.menuTemplateTxtBtn.addEventListener("click", downloadMenuTemplateTxt);
