@@ -165,6 +165,64 @@
         </div>
       </form>
 
+      <section class="category-admin-block">
+        <div class="panel-title-row mini-title-row">
+          <h3>分类管理</h3>
+        </div>
+
+        <div class="category-admin-grid">
+          <form id="category-create-form" class="category-admin-form">
+            <label>
+              新建分类
+              <input id="category-create-name" type="text" placeholder="例如：新品特价" required />
+            </label>
+            <button class="btn btn-subtle" type="submit">创建分类</button>
+          </form>
+
+          <form id="category-rename-form" class="category-admin-form">
+            <label>
+              重命名分类
+              <select id="category-rename-old" required></select>
+            </label>
+            <label>
+              新分类名
+              <input id="category-rename-new" type="text" placeholder="输入新名称" required />
+            </label>
+            <button class="btn btn-subtle" type="submit">重命名</button>
+          </form>
+
+          <form id="category-merge-form" class="category-admin-form">
+            <label>
+              源分类
+              <select id="category-merge-source" required></select>
+            </label>
+            <label>
+              目标分类
+              <input id="category-merge-target" type="text" list="category-merge-target-options" placeholder="可输入新分类" required />
+              <datalist id="category-merge-target-options"></datalist>
+            </label>
+            <button class="btn btn-subtle" type="submit">合并分类</button>
+          </form>
+
+          <form id="category-delete-form" class="category-admin-form">
+            <label>
+              删除空分类
+              <select id="category-delete-name" required></select>
+            </label>
+            <button class="btn btn-danger" type="submit">删除空分类</button>
+          </form>
+        </div>
+
+        <div class="category-admin-table-wrap">
+          <table class="menu-admin-table">
+            <thead>
+              <tr><th>分类名</th><th>上架菜品</th><th>总菜品</th></tr>
+            </thead>
+            <tbody id="category-admin-body"></tbody>
+          </table>
+        </div>
+      </section>
+
       <div class="menu-admin-table-wrap">
         <table class="menu-admin-table">
           <thead>
