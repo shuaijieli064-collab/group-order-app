@@ -323,6 +323,10 @@ th {
   border-top: 1px dashed rgba(76, 54, 37, 0.2);
 }
 
+.template-actions {
+  margin-top: 10px;
+}
+
 .check-inline {
   display: inline-flex;
   align-items: center;
