@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import os
+import re
 import sqlite3
 from collections import defaultdict
 from datetime import datetime
@@ -15,6 +16,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.getenv("GROUP_ORDER_DB_PATH", str(BASE_DIR / "group_orders.db")))
 
 app = Flask(__name__, static_folder="static", static_url_path="/static")
+
+DEFAULT_STORE_NAME = "双椒鲜土锅馆"
 
 
 MENU_SEED = [
@@ -75,6 +78,12 @@ def init_db() -> None:
     with get_conn() as conn:
         conn.executescript(
             """
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS menu_items (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
@@ -117,6 +126,85 @@ def init_db() -> None:
                 """,
                 [(item["name"], item["price"], item["category"], stamp, stamp) for item in MENU_SEED],
             )
+
+        store_name_row = conn.execute("SELECT value FROM app_settings WHERE key = 'store_name'").fetchone()
+        if store_name_row is None:
+            conn.execute(
+                "INSERT INTO app_settings(key, value, updated_at) VALUES ('store_name', ?, ?)",
+                (DEFAULT_STORE_NAME, now_iso()),
+            )
+
+
+def get_setting(conn: sqlite3.Connection, key: str, default: str = "") -> str:
+    row = conn.execute("SELECT value FROM app_settings WHERE key = ?", (key,)).fetchone()
+    if row is None:
+        return default
+    return str(row["value"])
+
+
+def upsert_setting(conn: sqlite3.Connection, key: str, value: str) -> None:
+    conn.execute(
+        """
+        INSERT INTO app_settings(key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+        """,
+        (key, value, now_iso()),
+    )
+
+
+def fetch_settings(conn: sqlite3.Connection) -> dict:
+    return {
+        "store_name": get_setting(conn, "store_name", DEFAULT_STORE_NAME),
+    }
+
+
+def parse_menu_import_text(raw_text: str) -> list[dict]:
+    rows = [line.strip() for line in raw_text.splitlines() if line.strip()]
+    if not rows:
+        raise ValueError("导入内容不能为空")
+
+    parsed: list[dict] = []
+    line_error = "每行请使用：分类,菜名,价格 或 菜名,价格,分类"
+
+    for index, line in enumerate(rows, start=1):
+        parts = [part.strip() for part in re.split(r"[\t,，]+", line) if part.strip()]
+        name = ""
+        category = ""
+        price_raw = ""
+
+        if len(parts) == 3:
+            if re.fullmatch(r"\d+", parts[1]):
+                name, price_raw, category = parts[0], parts[1], parts[2]
+            elif re.fullmatch(r"\d+", parts[2]):
+                category, name, price_raw = parts[0], parts[1], parts[2]
+            else:
+                raise ValueError(f"第 {index} 行格式错误：{line_error}")
+        else:
+            match = re.fullmatch(r"(.+?)\s+(\d+)$", line)
+            if not match:
+                raise ValueError(f"第 {index} 行格式错误：{line_error}")
+            name, price_raw = match.group(1).strip(), match.group(2).strip()
+            category = "未分类"
+
+        name = name.strip()
+        category = category.strip()
+        if not name:
+            raise ValueError(f"第 {index} 行菜名为空")
+        if not category:
+            raise ValueError(f"第 {index} 行分类为空")
+
+        try:
+            price = parse_price(price_raw)
+        except ValueError as exc:
+            raise ValueError(f"第 {index} 行价格错误：{exc}") from None
+
+        parsed.append({"name": name, "category": category, "price": price})
+
+    deduped: dict[str, dict] = {}
+    for item in parsed:
+        deduped[item["name"]] = item
+    return list(deduped.values())
 
 
 def normalize_items(raw_items: list[dict]) -> list[dict]:
@@ -303,6 +391,26 @@ def api_menu() -> Response:
     return jsonify([dict(row) for row in rows])
 
 
+@app.get("/api/settings")
+def api_settings() -> Response:
+    with get_conn() as conn:
+        settings = fetch_settings(conn)
+    return jsonify(settings)
+
+
+@app.put("/api/settings/store-name")
+def api_update_store_name() -> Response:
+    payload = request.get_json(silent=True) or {}
+    store_name = str(payload.get("store_name", "")).strip()
+    if not store_name:
+        return jsonify({"error": "店铺名称不能为空"}), 400
+
+    with get_conn() as conn:
+        upsert_setting(conn, "store_name", store_name)
+        settings = fetch_settings(conn)
+    return jsonify(settings)
+
+
 @app.get("/api/menu/admin")
 def api_menu_admin() -> Response:
     with get_conn() as conn:
@@ -383,6 +491,71 @@ def api_menu_delete(menu_item_id: int) -> Response:
             return jsonify({"error": "菜品不存在"}), 404
         conn.execute("UPDATE menu_items SET is_active = 0, updated_at = ? WHERE id = ?", (stamp, menu_item_id))
     return jsonify({"ok": True})
+
+
+@app.post("/api/menu/import")
+def api_menu_import() -> Response:
+    payload = request.get_json(silent=True) or {}
+    raw_text = str(payload.get("content", ""))
+    replace_all = bool(payload.get("replace_all", False))
+
+    try:
+        parsed = parse_menu_import_text(raw_text)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    stamp = now_iso()
+    with get_conn() as conn:
+        if replace_all:
+            conn.execute("UPDATE menu_items SET is_active = 0, updated_at = ?", (stamp,))
+
+        added = 0
+        updated = 0
+        restored = 0
+
+        for item in parsed:
+            existing = conn.execute(
+                "SELECT id, is_active FROM menu_items WHERE name = ?", (item["name"],)
+            ).fetchone()
+            if existing is None:
+                conn.execute(
+                    """
+                    INSERT INTO menu_items(name, price, category, is_active, created_at, updated_at)
+                    VALUES (?, ?, ?, 1, ?, ?)
+                    """,
+                    (item["name"], item["price"], item["category"], stamp, stamp),
+                )
+                added += 1
+                continue
+
+            conn.execute(
+                """
+                UPDATE menu_items
+                SET category = ?, price = ?, is_active = 1, updated_at = ?
+                WHERE id = ?
+                """,
+                (item["category"], item["price"], stamp, existing["id"]),
+            )
+            if existing["is_active"] == 0:
+                restored += 1
+            else:
+                updated += 1
+
+        active_count = conn.execute("SELECT COUNT(*) AS c FROM menu_items WHERE is_active = 1").fetchone()["c"]
+
+    return jsonify(
+        {
+            "ok": True,
+            "summary": {
+                "imported_count": len(parsed),
+                "added": added,
+                "updated": updated,
+                "restored": restored,
+                "active_count": active_count,
+                "replace_all": replace_all,
+            },
+        }
+    )
 
 
 @app.get("/api/orders")

@@ -129,6 +129,18 @@ input {
   background: #fffcf8;
 }
 
+textarea {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  min-height: 120px;
+  resize: vertical;
+  outline: none;
+  font-family: "Noto Sans SC", sans-serif;
+  background: #fffcf8;
+}
+
 .menu-groups {
   margin-top: 16px;
   display: grid;
@@ -178,6 +190,10 @@ input {
 
 .form-actions {
   margin-top: 14px;
+}
+
+.form-actions-tight {
+  margin-top: 0;
 }
 
 .btn {
@@ -272,10 +288,36 @@ th {
   margin-top: 12px;
 }
 
+.store-name-form {
+  margin-top: 12px;
+}
+
 .menu-admin-grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr 120px;
   gap: 10px;
+}
+
+.menu-admin-grid-store {
+  grid-template-columns: minmax(240px, 1fr) auto;
+  align-items: end;
+}
+
+.menu-import-form {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed rgba(76, 54, 37, 0.2);
+}
+
+.check-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.check-inline input {
+  width: auto;
 }
 
 .menu-admin-table-wrap {

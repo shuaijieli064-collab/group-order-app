@@ -41,8 +41,10 @@ const MENU_SEED = [
 ];
 
 const STORAGE_KEY = "group-order-pages-v1";
+const DEFAULT_STORE_NAME = "双椒鲜土锅馆";
 
 const state = {
+  storeName: DEFAULT_STORE_NAME,
   menu: [],
   menuAdmin: [],
   orders: [],
@@ -51,6 +53,9 @@ const state = {
 };
 
 const refs = {
+  storeNameDisplay: document.getElementById("store-name-display"),
+  storeNameForm: document.getElementById("store-name-form"),
+  storeNameInput: document.getElementById("store-name-input"),
   orderId: document.getElementById("order-id"),
   memberName: document.getElementById("member-name"),
   contact: document.getElementById("contact"),
@@ -63,6 +68,9 @@ const refs = {
   refreshBtn: document.getElementById("refresh-btn"),
   exportCsvBtn: document.getElementById("export-csv-btn"),
   menuAdminForm: document.getElementById("menu-admin-form"),
+  menuImportForm: document.getElementById("menu-import-form"),
+  menuImportContent: document.getElementById("menu-import-content"),
+  menuImportReplace: document.getElementById("menu-import-replace"),
   newDishName: document.getElementById("new-dish-name"),
   newDishCategory: document.getElementById("new-dish-category"),
   newDishPrice: document.getElementById("new-dish-price"),
@@ -100,6 +108,68 @@ function showAdminMessage(text, isError = false) {
 
 function clearAdminMessage() {
   refs.menuAdminMessage.textContent = "";
+}
+
+function renderStoreName(storeName) {
+  const value = (storeName || "").trim() || DEFAULT_STORE_NAME;
+  state.storeName = value;
+  refs.storeNameDisplay.textContent = value;
+  refs.storeNameInput.value = value;
+  document.title = `${value} · 群下单助手（GitHub Pages）`;
+}
+
+function parseMenuImportText(rawText) {
+  const lines = String(rawText || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (!lines.length) {
+    throw new Error("导入内容不能为空");
+  }
+
+  const results = [];
+  const lineError = "每行请使用：分类,菜名,价格 或 菜名,价格,分类";
+
+  lines.forEach((line, idx) => {
+    const parts = line.split(/[\t,，]+/).map((x) => x.trim()).filter(Boolean);
+    let name = "";
+    let category = "";
+    let priceRaw = "";
+
+    if (parts.length === 3) {
+      if (/^\d+$/.test(parts[1])) {
+        name = parts[0];
+        priceRaw = parts[1];
+        category = parts[2];
+      } else if (/^\d+$/.test(parts[2])) {
+        category = parts[0];
+        name = parts[1];
+        priceRaw = parts[2];
+      } else {
+        throw new Error(`第 ${idx + 1} 行格式错误：${lineError}`);
+      }
+    } else {
+      const m = line.match(/^(.+?)\s+(\d+)$/);
+      if (!m) {
+        throw new Error(`第 ${idx + 1} 行格式错误：${lineError}`);
+      }
+      name = m[1].trim();
+      priceRaw = m[2].trim();
+      category = "未分类";
+    }
+
+    const price = Number(priceRaw);
+    if (!name) throw new Error(`第 ${idx + 1} 行菜名为空`);
+    if (!category) throw new Error(`第 ${idx + 1} 行分类为空`);
+    if (!Number.isInteger(price) || price <= 0) throw new Error(`第 ${idx + 1} 行价格必须是大于0的整数`);
+
+    results.push({ name, category, price });
+  });
+
+  const dedup = new Map();
+  results.forEach((item) => dedup.set(item.name, item));
+  return [...dedup.values()];
 }
 
 function groupedMenu(menu) {
@@ -151,6 +221,7 @@ function saveState() {
   localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify({
+      storeName: state.storeName,
       menuAdmin: state.menuAdmin,
       orders: state.orders,
       nextMenuId: state.nextMenuId,
@@ -161,6 +232,7 @@ function saveState() {
 
 function normalizeLoadedState(data) {
   if (!data || !Array.isArray(data.menuAdmin) || !Array.isArray(data.orders)) return false;
+  state.storeName = String(data.storeName || DEFAULT_STORE_NAME);
   state.menuAdmin = data.menuAdmin;
   state.orders = data.orders;
   state.nextMenuId = Number(data.nextMenuId || 1);
@@ -192,10 +264,12 @@ function initState() {
     state.orders = [];
     state.nextMenuId = state.menuAdmin.length + 1;
     state.nextOrderId = 1;
+    state.storeName = DEFAULT_STORE_NAME;
     saveState();
   }
 
   state.menu = state.menuAdmin.filter((item) => item.is_active === 1);
+  renderStoreName(state.storeName);
 }
 
 function renderMenu() {
@@ -403,6 +477,7 @@ function renderSummary() {
 }
 
 function reloadAll() {
+  renderStoreName(state.storeName);
   state.menu = state.menuAdmin.filter((item) => item.is_active === 1);
   renderMenu();
   renderMenuAdmin();
@@ -545,6 +620,86 @@ function submitMenuAdminForm(event) {
   reloadAll();
 }
 
+function submitStoreNameForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+
+  const value = refs.storeNameInput.value.trim();
+  if (!value) {
+    showAdminMessage("店铺名称不能为空", true);
+    return;
+  }
+
+  renderStoreName(value);
+  saveState();
+  showAdminMessage("店铺名称已更新");
+}
+
+function submitMenuImportForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+
+  const content = refs.menuImportContent.value.trim();
+  const replaceAll = refs.menuImportReplace.checked;
+  if (!content) {
+    showAdminMessage("请先填写导入内容", true);
+    return;
+  }
+
+  let parsed;
+  try {
+    parsed = parseMenuImportText(content);
+  } catch (error) {
+    showAdminMessage(error.message, true);
+    return;
+  }
+
+  const stamp = nowIso();
+  if (replaceAll) {
+    state.menuAdmin.forEach((item) => {
+      item.is_active = 0;
+      item.updated_at = stamp;
+    });
+  }
+
+  let added = 0;
+  let updated = 0;
+  let restored = 0;
+  parsed.forEach((item) => {
+    const existing = state.menuAdmin.find((entry) => entry.name === item.name);
+    if (!existing) {
+      state.menuAdmin.push({
+        id: state.nextMenuId,
+        name: item.name,
+        category: item.category,
+        price: item.price,
+        is_active: 1,
+        updated_at: stamp,
+      });
+      state.nextMenuId += 1;
+      added += 1;
+      return;
+    }
+
+    const wasActive = existing.is_active === 1;
+    existing.category = item.category;
+    existing.price = item.price;
+    existing.is_active = 1;
+    existing.updated_at = stamp;
+    if (wasActive) {
+      updated += 1;
+    } else {
+      restored += 1;
+    }
+  });
+
+  saveState();
+  refs.menuImportContent.value = "";
+  refs.menuImportReplace.checked = false;
+  showAdminMessage(`导入完成：新增 ${added}，更新 ${updated}，恢复 ${restored}`);
+  reloadAll();
+}
+
 function exportCsv() {
   const summary = buildSummary();
   const rows = [];
@@ -586,10 +741,12 @@ function exportCsv() {
 }
 
 function bindEvents() {
+  refs.storeNameForm.addEventListener("submit", submitStoreNameForm);
   refs.orderForm.addEventListener("submit", submitForm);
   refs.clearBtn.addEventListener("click", resetForm);
   refs.refreshBtn.addEventListener("click", reloadAll);
   refs.menuAdminForm.addEventListener("submit", submitMenuAdminForm);
+  refs.menuImportForm.addEventListener("submit", submitMenuImportForm);
   refs.exportCsvBtn.addEventListener("click", exportCsv);
 }
 

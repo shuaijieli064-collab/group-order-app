@@ -16,7 +16,7 @@
   <main class="page">
     <header class="hero">
       <p class="kicker">群点餐系统</p>
-      <h1>双椒鲜土锅馆 · 团队下单台</h1>
+      <h1><span id="store-name-display">双椒鲜土锅馆</span> · 团队下单台</h1>
       <p>按黑板菜单初始化，支持多人下单、修改订单、自动汇总、导出 CSV 发给店家。</p>
     </header>
 
@@ -104,6 +104,18 @@
         <h2>菜品管理</h2>
       </div>
 
+      <form id="store-name-form" class="store-name-form">
+        <div class="menu-admin-grid menu-admin-grid-store">
+          <label>
+            店铺名称
+            <input id="store-name-input" type="text" placeholder="例如：双椒鲜土锅馆" required />
+          </label>
+          <div class="form-actions form-actions-tight">
+            <button class="btn btn-subtle" type="submit">修改店铺名称</button>
+          </div>
+        </div>
+      </form>
+
       <form id="menu-admin-form" class="menu-admin-form">
         <div class="menu-admin-grid">
           <label>
@@ -122,6 +134,20 @@
         <div class="form-actions">
           <button class="btn btn-main" type="submit">新增菜品</button>
           <span id="menu-admin-message" class="msg"></span>
+        </div>
+      </form>
+
+      <form id="menu-import-form" class="menu-import-form">
+        <label>
+          一键导入菜单（每行一条）
+          <textarea id="menu-import-content" placeholder="分类,菜名,价格&#10;招牌必点,爆炒肥肠,46&#10;家常小炒,油渣炒洪菜,19"></textarea>
+        </label>
+        <div class="form-actions">
+          <label class="check-inline">
+            <input id="menu-import-replace" type="checkbox" />
+            覆盖旧菜单（勾选后旧菜全部下架）
+          </label>
+          <button class="btn btn-main" type="submit">一键导入菜单和价格</button>
         </div>
       </form>
 

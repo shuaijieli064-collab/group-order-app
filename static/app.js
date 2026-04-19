@@ -6,6 +6,9 @@ const state = {
 };
 
 const refs = {
+  storeNameDisplay: document.getElementById("store-name-display"),
+  storeNameForm: document.getElementById("store-name-form"),
+  storeNameInput: document.getElementById("store-name-input"),
   orderId: document.getElementById("order-id"),
   memberName: document.getElementById("member-name"),
   contact: document.getElementById("contact"),
@@ -17,6 +20,9 @@ const refs = {
   clearBtn: document.getElementById("clear-form-btn"),
   refreshBtn: document.getElementById("refresh-btn"),
   menuAdminForm: document.getElementById("menu-admin-form"),
+  menuImportForm: document.getElementById("menu-import-form"),
+  menuImportContent: document.getElementById("menu-import-content"),
+  menuImportReplace: document.getElementById("menu-import-replace"),
   newDishName: document.getElementById("new-dish-name"),
   newDishCategory: document.getElementById("new-dish-category"),
   newDishPrice: document.getElementById("new-dish-price"),
@@ -50,6 +56,13 @@ function showAdminMessage(text, isError = false) {
 
 function clearAdminMessage() {
   refs.menuAdminMessage.textContent = "";
+}
+
+function renderStoreName(storeName) {
+  const value = storeName || "双椒鲜土锅馆";
+  refs.storeNameDisplay.textContent = value;
+  refs.storeNameInput.value = value;
+  document.title = `${value} · 群下单助手`;
 }
 
 function groupedMenu(menu) {
@@ -293,12 +306,14 @@ async function fetchJson(url, options = {}) {
 }
 
 async function reloadAll() {
-  const [menu, menuAdmin, orders, summary] = await Promise.all([
+  const [settings, menu, menuAdmin, orders, summary] = await Promise.all([
+    fetchJson("/api/settings"),
     fetchJson("/api/menu"),
     fetchJson("/api/menu/admin"),
     fetchJson("/api/orders"),
     fetchJson("/api/summary"),
   ]);
+  renderStoreName(settings.store_name);
   state.menu = menu;
   state.menuById = new Map(menu.map((item) => [item.id, item]));
   state.menuAdmin = menuAdmin;
@@ -307,6 +322,28 @@ async function reloadAll() {
   renderMenuAdmin();
   renderOrders();
   renderSummary(summary);
+}
+
+async function submitStoreNameForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+
+  const storeName = refs.storeNameInput.value.trim();
+  if (!storeName) {
+    showAdminMessage("店铺名称不能为空", true);
+    return;
+  }
+
+  try {
+    const settings = await fetchJson("/api/settings/store-name", {
+      method: "PUT",
+      body: JSON.stringify({ store_name: storeName }),
+    });
+    renderStoreName(settings.store_name);
+    showAdminMessage("店铺名称已更新");
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
 }
 
 async function submitMenuAdminForm(event) {
@@ -328,6 +365,32 @@ async function submitMenuAdminForm(event) {
     refs.newDishCategory.value = "";
     refs.newDishPrice.value = "";
     showAdminMessage("菜品已新增");
+    await reloadAll();
+  } catch (error) {
+    showAdminMessage(error.message, true);
+  }
+}
+
+async function submitMenuImportForm(event) {
+  event.preventDefault();
+  clearAdminMessage();
+
+  const content = refs.menuImportContent.value.trim();
+  const replaceAll = refs.menuImportReplace.checked;
+  if (!content) {
+    showAdminMessage("请先填写导入内容", true);
+    return;
+  }
+
+  try {
+    const result = await fetchJson("/api/menu/import", {
+      method: "POST",
+      body: JSON.stringify({ content, replace_all: replaceAll }),
+    });
+    const s = result.summary;
+    showAdminMessage(`导入完成：新增 ${s.added}，更新 ${s.updated}，恢复 ${s.restored}`);
+    refs.menuImportContent.value = "";
+    refs.menuImportReplace.checked = false;
     await reloadAll();
   } catch (error) {
     showAdminMessage(error.message, true);
@@ -369,10 +432,12 @@ async function submitForm(event) {
 }
 
 function bindEvents() {
+  refs.storeNameForm.addEventListener("submit", submitStoreNameForm);
   refs.orderForm.addEventListener("submit", submitForm);
   refs.clearBtn.addEventListener("click", resetForm);
   refs.refreshBtn.addEventListener("click", reloadAll);
   refs.menuAdminForm.addEventListener("submit", submitMenuAdminForm);
+  refs.menuImportForm.addEventListener("submit", submitMenuImportForm);
 }
 
 async function boot() {
