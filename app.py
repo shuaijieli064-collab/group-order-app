@@ -94,6 +94,13 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 member_name TEXT NOT NULL,
@@ -126,6 +133,8 @@ def init_db() -> None:
                 """,
                 [(item["name"], item["price"], item["category"], stamp, stamp) for item in MENU_SEED],
             )
+
+        sync_categories_from_menu_items(conn)
 
         store_name_row = conn.execute("SELECT value FROM app_settings WHERE key = 'store_name'").fetchone()
         if store_name_row is None:
@@ -205,6 +214,42 @@ def parse_menu_import_text(raw_text: str) -> list[dict]:
     for item in parsed:
         deduped[item["name"]] = item
     return list(deduped.values())
+
+
+def upsert_category(conn: sqlite3.Connection, category: str) -> None:
+    category = category.strip()
+    if not category:
+        return
+    conn.execute(
+        """
+        INSERT INTO categories(name, created_at, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET updated_at = excluded.updated_at
+        """,
+        (category, now_iso(), now_iso()),
+    )
+
+
+def sync_categories_from_menu_items(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("SELECT DISTINCT category FROM menu_items WHERE TRIM(category) <> ''").fetchall()
+    for row in rows:
+        upsert_category(conn, str(row["category"]))
+
+
+def fetch_category_admin(conn: sqlite3.Connection) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            c.name AS category,
+            COALESCE(SUM(CASE WHEN m.is_active = 1 THEN 1 ELSE 0 END), 0) AS active_count,
+            COUNT(m.id) AS total_count
+        FROM categories c
+        LEFT JOIN menu_items m ON m.category = c.name
+        GROUP BY c.name
+        ORDER BY c.name COLLATE NOCASE ASC
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def normalize_items(raw_items: list[dict]) -> list[dict]:
@@ -371,6 +416,13 @@ def parse_price(raw_price: object) -> int:
     return price
 
 
+def parse_category(raw: object, field_name: str = "分类") -> str:
+    value = str(raw or "").strip()
+    if not value:
+        raise ValueError(f"{field_name}不能为空")
+    return value
+
+
 @app.get("/")
 def index() -> Response:
     return send_from_directory(app.static_folder, "index.html")
@@ -422,11 +474,12 @@ def api_menu_admin() -> Response:
 def api_menu_create() -> Response:
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
-    category = str(payload.get("category", "")).strip()
+    try:
+        category = parse_category(payload.get("category"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     if not name:
         return jsonify({"error": "菜名不能为空"}), 400
-    if not category:
-        return jsonify({"error": "分类不能为空"}), 400
     try:
         price = parse_price(payload.get("price"))
     except ValueError as exc:
@@ -434,6 +487,7 @@ def api_menu_create() -> Response:
 
     stamp = now_iso()
     with get_conn() as conn:
+        upsert_category(conn, category)
         existing = conn.execute("SELECT id, is_active FROM menu_items WHERE name = ?", (name,)).fetchone()
         if existing and existing["is_active"] == 1:
             return jsonify({"error": "菜名已存在"}), 400
@@ -514,6 +568,7 @@ def api_menu_import() -> Response:
         restored = 0
 
         for item in parsed:
+            upsert_category(conn, item["category"])
             existing = conn.execute(
                 "SELECT id, is_active FROM menu_items WHERE name = ?", (item["name"],)
             ).fetchone()
@@ -556,6 +611,106 @@ def api_menu_import() -> Response:
             },
         }
     )
+
+
+@app.get("/api/categories/admin")
+def api_category_admin() -> Response:
+    with get_conn() as conn:
+        categories = fetch_category_admin(conn)
+    return jsonify(categories)
+
+
+@app.post("/api/categories")
+def api_category_create() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        name = parse_category(payload.get("name"), "分类名称")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    with get_conn() as conn:
+        upsert_category(conn, name)
+
+    return jsonify({"ok": True, "name": name}), 201
+
+
+@app.patch("/api/categories/rename")
+def api_category_rename() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        old_name = parse_category(payload.get("old_name"), "原分类")
+        new_name = parse_category(payload.get("new_name"), "新分类")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if old_name == new_name:
+        return jsonify({"error": "新旧分类不能相同"}), 400
+
+    stamp = now_iso()
+    with get_conn() as conn:
+        old_exists = conn.execute("SELECT id FROM categories WHERE name = ?", (old_name,)).fetchone()
+        if old_exists is None:
+            return jsonify({"error": "原分类不存在"}), 404
+
+        target_exists = conn.execute("SELECT id FROM categories WHERE name = ?", (new_name,)).fetchone()
+        if target_exists is not None:
+            return jsonify({"error": "目标分类已存在，请使用合并"}), 400
+
+        conn.execute("UPDATE categories SET name = ?, updated_at = ? WHERE name = ?", (new_name, stamp, old_name))
+        conn.execute("UPDATE menu_items SET category = ?, updated_at = ? WHERE category = ?", (new_name, stamp, old_name))
+
+    return jsonify({"ok": True, "old_name": old_name, "new_name": new_name})
+
+
+@app.patch("/api/categories/merge")
+def api_category_merge() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        source_name = parse_category(payload.get("source_name"), "源分类")
+        target_name = parse_category(payload.get("target_name"), "目标分类")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    if source_name == target_name:
+        return jsonify({"error": "源分类和目标分类不能相同"}), 400
+
+    stamp = now_iso()
+    with get_conn() as conn:
+        source_exists = conn.execute("SELECT id FROM categories WHERE name = ?", (source_name,)).fetchone()
+        if source_exists is None:
+            return jsonify({"error": "源分类不存在"}), 404
+
+        upsert_category(conn, target_name)
+        moved_count = conn.execute(
+            "UPDATE menu_items SET category = ?, updated_at = ? WHERE category = ?",
+            (target_name, stamp, source_name),
+        ).rowcount
+        conn.execute("DELETE FROM categories WHERE name = ?", (source_name,))
+        conn.execute("UPDATE categories SET updated_at = ? WHERE name = ?", (stamp, target_name))
+
+    return jsonify({"ok": True, "source_name": source_name, "target_name": target_name, "moved": moved_count})
+
+
+@app.post("/api/categories/delete-empty")
+def api_category_delete_empty() -> Response:
+    payload = request.get_json(silent=True) or {}
+    try:
+        name = parse_category(payload.get("name"), "分类名称")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    with get_conn() as conn:
+        exists = conn.execute("SELECT id FROM categories WHERE name = ?", (name,)).fetchone()
+        if exists is None:
+            return jsonify({"error": "分类不存在"}), 404
+
+        used = conn.execute("SELECT COUNT(*) AS c FROM menu_items WHERE category = ?", (name,)).fetchone()["c"]
+        if used > 0:
+            return jsonify({"error": "分类下还有菜品，不能删除"}), 400
+
+        conn.execute("DELETE FROM categories WHERE name = ?", (name,))
+
+    return jsonify({"ok": True, "name": name})
 
 
 @app.get("/api/orders")
