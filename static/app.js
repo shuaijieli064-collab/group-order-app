@@ -130,8 +130,9 @@ function renderStoreName(storeName) {
 function groupedMenu(menu) {
   const groups = {};
   for (const item of menu) {
-    if (!groups[item.category]) groups[item.category] = [];
-    groups[item.category].push(item);
+    const category = String(item.category || "").trim() || "未分类";
+    if (!groups[category]) groups[category] = [];
+    groups[category].push({ ...item, category });
   }
   return groups;
 }
@@ -167,10 +168,12 @@ function renderMenu() {
 function renderMenuAdmin() {
   const categorySet = new Set();
   (state.categoryAdmin || []).forEach((item) => {
-    if (item.category) categorySet.add(item.category.trim());
+    const category = String(item.category || "").trim();
+    if (category) categorySet.add(category);
   });
   state.menuAdmin.forEach((item) => {
-    if (item.category) categorySet.add(item.category.trim());
+    const category = String(item.category || "").trim();
+    if (category) categorySet.add(category);
   });
   refs.newDishCategoryOptions.innerHTML = [...categorySet]
     .sort((a, b) => a.localeCompare(b, "zh-CN"))
@@ -178,7 +181,7 @@ function renderMenuAdmin() {
     .join("");
 
   if (!state.menuAdmin.length) {
-    refs.menuAdminBody.innerHTML = `<tr><td colspan="5" class="empty">暂无菜品</td></tr>`;
+    refs.menuAdminBody.innerHTML = `<tr><td colspan="6" class="empty">暂无菜品</td></tr>`;
     return;
   }
 
@@ -200,6 +203,9 @@ function renderMenuAdmin() {
           <td><span class="status-tag ${statusClass}">${statusText}</span></td>
           <td>
             <button class="btn btn-danger btn-small" data-delete-dish-id="${item.id}" type="button" ${disabled}>删菜</button>
+          </td>
+          <td>
+            <button class="btn btn-danger btn-small" data-delete-dish-hard-id="${item.id}" type="button">彻底删</button>
           </td>
         </tr>
       `;
@@ -242,10 +248,25 @@ function renderMenuAdmin() {
       }
     });
   });
+
+  refs.menuAdminBody.querySelectorAll("button[data-delete-dish-hard-id]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const id = Number(button.dataset.deleteDishHardId);
+      const ok = window.confirm("确认彻底删除该菜品？已有订单记录的菜品不能彻底删除。");
+      if (!ok) return;
+      try {
+        await fetchJson(`/api/menu/${id}/hard`, { method: "DELETE" });
+        showAdminMessage("菜品已彻底删除");
+        await reloadAll();
+      } catch (error) {
+        showAdminMessage(error.message, true);
+      }
+    });
+  });
 }
 
 function renderCategoryAdmin() {
-  const categories = state.categoryAdmin || [];
+  const categories = (state.categoryAdmin || []).filter((item) => String(item.category || "").trim() !== "");
   if (!categories.length) {
     refs.categoryAdminBody.innerHTML = `<tr><td colspan="3" class="empty">暂无分类</td></tr>`;
     refs.categoryRenameOld.innerHTML = "";
@@ -446,6 +467,7 @@ async function submitCategoryCreateForm(event) {
     refs.categoryCreateName.value = "";
     showAdminMessage("分类已创建");
     await reloadAll();
+    refs.newDishCategory.value = name;
   } catch (error) {
     showAdminMessage(error.message, true);
   }
@@ -556,7 +578,6 @@ async function submitMenuAdminForm(event) {
       body: JSON.stringify(payload),
     });
     refs.newDishName.value = "";
-    refs.newDishCategory.value = "";
     refs.newDishPrice.value = "";
     showAdminMessage("菜品已新增");
     await reloadAll();
