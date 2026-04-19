@@ -76,6 +76,7 @@ const refs = {
   menuTemplateTxtBtn: document.getElementById("menu-template-txt-btn"),
   newDishName: document.getElementById("new-dish-name"),
   newDishCategory: document.getElementById("new-dish-category"),
+  newDishCategoryOptions: document.getElementById("new-dish-category-options"),
   newDishPrice: document.getElementById("new-dish-price"),
   menuAdminMessage: document.getElementById("menu-admin-message"),
   menuAdminBody: document.getElementById("menu-admin-body"),
@@ -350,6 +351,17 @@ function renderMenu() {
 }
 
 function renderMenuAdmin() {
+  const categorySet = new Set();
+  state.menuAdmin
+    .filter((item) => item.is_active)
+    .forEach((item) => {
+      if (item.category) categorySet.add(item.category.trim());
+    });
+  refs.newDishCategoryOptions.innerHTML = [...categorySet]
+    .sort((a, b) => a.localeCompare(b, "zh-CN"))
+    .map((category) => `<option value="${category}"></option>`)
+    .join("");
+
   if (!state.menuAdmin.length) {
     refs.menuAdminBody.innerHTML = `<tr><td colspan="5" class="empty">暂无菜品</td></tr>`;
     return;
