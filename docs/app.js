@@ -53,6 +53,7 @@ const state = {
 };
 
 const refs = {
+  viewTabsWrap: document.getElementById("view-tabs"),
   storeNameDisplay: document.getElementById("store-name-display"),
   storeNameForm: document.getElementById("store-name-form"),
   storeNameInput: document.getElementById("store-name-input"),
@@ -86,6 +87,8 @@ const refs = {
   memberRankBody: document.getElementById("member-rank-body")
 };
 
+let activeView = "order";
+
 function nowIso() {
   return new Date().toISOString().slice(0, 19).replace("T", " ");
 }
@@ -110,6 +113,16 @@ function showAdminMessage(text, isError = false) {
 
 function clearAdminMessage() {
   refs.menuAdminMessage.textContent = "";
+}
+
+function switchView(view) {
+  activeView = view;
+  document.querySelectorAll(".screen-panel").forEach((panel) => {
+    panel.classList.toggle("is-active", panel.dataset.screen === view);
+  });
+  refs.viewTabsWrap.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.classList.toggle("is-active", tab.dataset.viewTarget === view);
+  });
 }
 
 function downloadFile(filename, content, mimeType) {
@@ -475,6 +488,7 @@ function renderOrders() {
       const id = Number(button.dataset.editId);
       const order = state.orders.find((entry) => entry.id === id);
       if (order) fillForm(order);
+      switchView("order");
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
   });
@@ -776,6 +790,9 @@ function exportCsv() {
 }
 
 function bindEvents() {
+  refs.viewTabsWrap.querySelectorAll(".view-tab").forEach((tab) => {
+    tab.addEventListener("click", () => switchView(tab.dataset.viewTarget));
+  });
   refs.storeNameForm.addEventListener("submit", submitStoreNameForm);
   refs.orderForm.addEventListener("submit", submitForm);
   refs.clearBtn.addEventListener("click", resetForm);
@@ -790,6 +807,7 @@ function bindEvents() {
 function boot() {
   initState();
   bindEvents();
+  switchView(activeView);
   reloadAll();
 }
 
