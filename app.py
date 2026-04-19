@@ -134,6 +134,9 @@ def init_db() -> None:
                 [(item["name"], item["price"], item["category"], stamp, stamp) for item in MENU_SEED],
             )
 
+        conn.execute("UPDATE menu_items SET category = '未分类', updated_at = ? WHERE TRIM(category) = ''", (now_iso(),))
+        conn.execute("DELETE FROM categories WHERE TRIM(name) = ''")
+
         sync_categories_from_menu_items(conn)
 
         store_name_row = conn.execute("SELECT value FROM app_settings WHERE key = 'store_name'").fetchone()
@@ -231,7 +234,12 @@ def upsert_category(conn: sqlite3.Connection, category: str) -> None:
 
 
 def sync_categories_from_menu_items(conn: sqlite3.Connection) -> None:
-    rows = conn.execute("SELECT DISTINCT category FROM menu_items WHERE TRIM(category) <> ''").fetchall()
+    rows = conn.execute(
+        """
+        SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), '未分类') AS category
+        FROM menu_items
+        """
+    ).fetchall()
     for row in rows:
         upsert_category(conn, str(row["category"]))
 
@@ -244,7 +252,7 @@ def fetch_category_admin(conn: sqlite3.Connection) -> list[dict]:
             COALESCE(SUM(CASE WHEN m.is_active = 1 THEN 1 ELSE 0 END), 0) AS active_count,
             COUNT(m.id) AS total_count
         FROM categories c
-        LEFT JOIN menu_items m ON m.category = c.name
+        LEFT JOIN menu_items m ON COALESCE(NULLIF(TRIM(m.category), ''), '未分类') = c.name
         GROUP BY c.name
         ORDER BY c.name COLLATE NOCASE ASC
         """
@@ -398,7 +406,13 @@ def fetch_summary(conn: sqlite3.Connection) -> dict:
 def fetch_menu_admin(conn: sqlite3.Connection) -> list[dict]:
     rows = conn.execute(
         """
-        SELECT id, name, price, category, is_active, updated_at
+        SELECT
+            id,
+            name,
+            price,
+            COALESCE(NULLIF(TRIM(category), ''), '未分类') AS category,
+            is_active,
+            updated_at
         FROM menu_items
         ORDER BY is_active DESC, category ASC, name ASC, id ASC
         """
@@ -423,6 +437,11 @@ def parse_category(raw: object, field_name: str = "分类") -> str:
     return value
 
 
+def normalize_category_name(raw: object) -> str:
+    value = str(raw or "").strip()
+    return value if value else "未分类"
+
+
 @app.get("/")
 def index() -> Response:
     return send_from_directory(app.static_folder, "index.html")
@@ -433,7 +452,11 @@ def api_menu() -> Response:
     with get_conn() as conn:
         rows = conn.execute(
             """
-            SELECT id, name, price, category
+            SELECT
+                id,
+                name,
+                price,
+                COALESCE(NULLIF(TRIM(category), ''), '未分类') AS category
             FROM menu_items
             WHERE is_active = 1
             ORDER BY category ASC, price DESC, id ASC
@@ -474,10 +497,7 @@ def api_menu_admin() -> Response:
 def api_menu_create() -> Response:
     payload = request.get_json(silent=True) or {}
     name = str(payload.get("name", "")).strip()
-    try:
-        category = parse_category(payload.get("category"))
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    category = normalize_category_name(payload.get("category"))
     if not name:
         return jsonify({"error": "菜名不能为空"}), 400
     try:
@@ -544,6 +564,22 @@ def api_menu_delete(menu_item_id: int) -> Response:
         if not exists:
             return jsonify({"error": "菜品不存在"}), 404
         conn.execute("UPDATE menu_items SET is_active = 0, updated_at = ? WHERE id = ?", (stamp, menu_item_id))
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/menu/<int:menu_item_id>/hard")
+def api_menu_delete_hard(menu_item_id: int) -> Response:
+    with get_conn() as conn:
+        exists = conn.execute("SELECT id FROM menu_items WHERE id = ?", (menu_item_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "菜品不存在"}), 404
+
+        used = conn.execute("SELECT COUNT(*) AS c FROM order_items WHERE menu_item_id = ?", (menu_item_id,)).fetchone()["c"]
+        if used > 0:
+            return jsonify({"error": "该菜品已有订单记录，不能彻底删除"}), 400
+
+        conn.execute("DELETE FROM menu_items WHERE id = ?", (menu_item_id,))
+
     return jsonify({"ok": True})
 
 
@@ -623,10 +659,7 @@ def api_category_admin() -> Response:
 @app.post("/api/categories")
 def api_category_create() -> Response:
     payload = request.get_json(silent=True) or {}
-    try:
-        name = parse_category(payload.get("name"), "分类名称")
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    name = normalize_category_name(payload.get("name"))
 
     with get_conn() as conn:
         upsert_category(conn, name)
@@ -657,7 +690,10 @@ def api_category_rename() -> Response:
             return jsonify({"error": "目标分类已存在，请使用合并"}), 400
 
         conn.execute("UPDATE categories SET name = ?, updated_at = ? WHERE name = ?", (new_name, stamp, old_name))
-        conn.execute("UPDATE menu_items SET category = ?, updated_at = ? WHERE category = ?", (new_name, stamp, old_name))
+        conn.execute(
+            "UPDATE menu_items SET category = ?, updated_at = ? WHERE COALESCE(NULLIF(TRIM(category), ''), '未分类') = ?",
+            (new_name, stamp, old_name),
+        )
 
     return jsonify({"ok": True, "old_name": old_name, "new_name": new_name})
 
@@ -682,7 +718,7 @@ def api_category_merge() -> Response:
 
         upsert_category(conn, target_name)
         moved_count = conn.execute(
-            "UPDATE menu_items SET category = ?, updated_at = ? WHERE category = ?",
+            "UPDATE menu_items SET category = ?, updated_at = ? WHERE COALESCE(NULLIF(TRIM(category), ''), '未分类') = ?",
             (target_name, stamp, source_name),
         ).rowcount
         conn.execute("DELETE FROM categories WHERE name = ?", (source_name,))
@@ -704,7 +740,10 @@ def api_category_delete_empty() -> Response:
         if exists is None:
             return jsonify({"error": "分类不存在"}), 404
 
-        used = conn.execute("SELECT COUNT(*) AS c FROM menu_items WHERE category = ?", (name,)).fetchone()["c"]
+        used = conn.execute(
+            "SELECT COUNT(*) AS c FROM menu_items WHERE COALESCE(NULLIF(TRIM(category), ''), '未分类') = ?",
+            (name,),
+        ).fetchone()["c"]
         if used > 0:
             return jsonify({"error": "分类下还有菜品，不能删除"}), 400
 
