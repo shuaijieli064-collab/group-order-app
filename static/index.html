@@ -20,7 +20,16 @@
       <p>按黑板菜单初始化，支持多人下单、修改订单、自动汇总、导出 CSV 发给店家。</p>
     </header>
 
-    <section class="panel order-panel">
+    <section class="panel view-switcher">
+      <div class="view-tabs" id="view-tabs">
+        <button class="btn btn-subtle view-tab is-active" type="button" data-view-target="order">我要下单</button>
+        <button class="btn btn-subtle view-tab" type="button" data-view-target="summary">实时汇总</button>
+        <button class="btn btn-subtle view-tab" type="button" data-view-target="menu">菜品管理</button>
+        <button class="btn btn-subtle view-tab" type="button" data-view-target="orders">已提交订单</button>
+      </div>
+    </section>
+
+    <section class="panel order-panel screen-panel is-active" data-screen="order">
       <div class="panel-title-row">
         <h2>提交你的订单</h2>
         <button id="clear-form-btn" class="btn btn-subtle" type="button">清空表单</button>
@@ -53,7 +62,7 @@
       </form>
     </section>
 
-    <section class="panel overview-panel">
+    <section class="panel overview-panel screen-panel" data-screen="summary">
       <div class="panel-title-row">
         <h2>实时汇总</h2>
         <div class="inline-actions">
@@ -99,7 +108,7 @@
       </div>
     </section>
 
-    <section class="panel menu-admin-panel">
+    <section class="panel menu-admin-panel screen-panel" data-screen="menu">
       <div class="panel-title-row">
         <h2>菜品管理</h2>
       </div>
@@ -165,7 +174,7 @@
       </div>
     </section>
 
-    <section class="panel order-list-panel">
+    <section class="panel order-list-panel screen-panel" data-screen="orders">
       <h2>已提交订单</h2>
       <div id="order-list" class="order-list"></div>
     </section>
